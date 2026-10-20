@@ -174,6 +174,7 @@
     .stat-value.blue { color: var(--blue); }
     .stat-value.green { color: var(--green); }
     .stat-value.amber { color: var(--amber); }
+    .stat-sub { margin-top: 1px; color: var(--muted-2); font-size: 11px; }
 
     .banner {
       display: flex;
@@ -655,8 +656,12 @@
     </header>
 
     <section class="stats" aria-label="统计">
-      <div class="stat"><div class="stat-label">生态条目</div><div id="statTotal" class="stat-value">39</div></div>
-      <div class="stat"><div class="stat-label">V2 可安装</div><div id="statV2" class="stat-value blue">0</div></div>
+      <div class="stat">
+        <div class="stat-label">插件条目</div>
+        <div id="statTotal" class="stat-value">—</div>
+        <div id="statBreakdown" class="stat-sub">官方 — · 社区 —</div>
+      </div>
+      <div class="stat"><div class="stat-label">可安装</div><div id="statV2" class="stat-value blue">0</div></div>
       <div class="stat"><div class="stat-label">已打开</div><div id="statSelected" class="stat-value amber">0</div></div>
       <div class="stat"><div class="stat-label">受管安装</div><div id="statInstalled" class="stat-value green">0</div></div>
     </section>
@@ -673,10 +678,12 @@
       </div>
       <div id="filters" class="filters" role="group" aria-label="筛选">
         <button data-filter="all" class="active">全部</button>
-        <button data-filter="v2">V2 可安装</button>
+        <button data-filter="official">官方</button>
+        <button data-filter="awesome">社区</button>
+        <button data-filter="v2">可安装</button>
         <button data-filter="on">已打开</button>
         <button data-filter="configured">已在配置</button>
-        <button data-filter="blocked">V1 / 非插件</button>
+        <button data-filter="blocked">不可安装</button>
       </div>
       <div class="tool-actions">
         <button id="checkBtn" class="btn" title="重新查询 npm registry">刷新 npm</button>
@@ -687,7 +694,7 @@
     </section>
 
     <div class="result-line">
-      <span>点击开关即可安装或卸载；红色条目无法在 V2 加载。</span>
+      <span>点击开关即可安装或卸载；红色/灰色条目无法在 V2 加载；社区条目来自 awesome-opencode。</span>
       <span id="resultCount"></span>
     </div>
 
@@ -743,7 +750,13 @@
       if (compat === "v2") return { label: "V2", cls: "blue" };
       if (compat === "v1") return { label: "V1", cls: "amber" };
       if (compat === "none") return { label: "非插件", cls: "red" };
-      return { label: "未收录", cls: "purple" };
+      return { label: "未验证", cls: "purple" };
+    }
+
+    function sourceMeta(source) {
+      return source === "awesome"
+        ? { label: "社区", cls: "purple" }
+        : { label: "官方", cls: "blue" };
     }
 
     function npmMeta(npm) {
@@ -826,11 +839,20 @@
     function matches(item) {
       const query = state.query.trim().toLowerCase();
       if (query) {
-        const haystack = [item.name, item.package || "", item.description, item.note || ""]
+        const haystack = [
+          item.name,
+          item.package || "",
+          item.description,
+          item.note || "",
+          (item.tags || []).join(" "),
+          item.source === "awesome" ? "社区 awesome" : "官方 official",
+        ]
           .join(" ")
           .toLowerCase();
         if (!haystack.includes(query)) return false;
       }
+      if (state.filter === "official") return item.source === "official";
+      if (state.filter === "awesome") return item.source === "awesome";
       if (state.filter === "v2") return item.canToggle;
       if (state.filter === "on") return item.selected;
       if (state.filter === "configured") return item.configured;
@@ -841,6 +863,7 @@
     function createCard(item) {
       const data = state.data;
       const compat = compatMeta(item.compat);
+      const source = sourceMeta(item.source);
       const npm = npmMeta(item.npm);
       const classes = ["card"];
       if (item.selected) classes.push("selected");
@@ -863,6 +886,7 @@
           <div class="title-wrap">
             <div class="title-line">
               <h2>${esc(item.name)}</h2>
+              <span class="badge ${source.cls}">${source.label}</span>
               <span class="badge ${compat.cls}">${compat.label}</span>
             </div>
             <div class="pkg" title="${escAttr(item.package || "")}">${esc(item.package || "无 npm 包")}</div>
@@ -936,6 +960,8 @@
       masterState.className = "master-state " + (data.enabled ? "on" : "off");
 
       $("#statTotal").textContent = data.counts.total;
+      $("#statBreakdown").textContent =
+        "官方 " + data.counts.official + " · 社区 " + data.counts.awesome;
       $("#statV2").textContent = data.counts.v2;
       $("#statSelected").textContent = data.counts.selected;
       $("#statInstalled").textContent = data.counts.installed;

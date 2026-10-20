@@ -250,21 +250,25 @@ export async function listText(state: ManagerState, checkAll: boolean): Promise<
   const selected = new Set(state.selected.map((pkg) => basePackage(pkg).toLowerCase()));
   const npm = { ...(state.npm ?? {}) };
   if (checkAll) {
-    const targets = CATALOG.filter((entry) => entry.package && entry.compat !== "none").map((entry) => entry.package!);
-    await Promise.all(
-      targets.map(async (pkg) => {
-        npm[pkg] = await checkNpm(pkg, npm[pkg]);
-      }),
-    );
+    const targets = [
+      ...new Set(
+        CATALOG.filter((entry) => entry.package && entry.compat !== "none").map((entry) => entry.package!),
+      ),
+    ];
+    // The community list is large; keep registry pressure polite.
+    await mapLimit(targets, 8, async (pkg) => {
+      npm[pkg] = await checkNpm(pkg, npm[pkg]);
+    });
     state.npm = npm;
     await saveState(state);
   }
 
+  const official = CATALOG.filter((entry) => entry.source !== "awesome").length;
   const lines: string[] = [];
-  lines.push(`OpenCode 生态插件清单（共 ${CATALOG.length} 项）`);
+  lines.push(`OpenCode 插件清单（官方 ${official} + 社区 ${CATALOG.length - official}，共 ${CATALOG.length} 项）`);
   lines.push(`总开关：${state.enabled ? "开" : "关"}　已选：${state.selected.length}　受管安装：${state.installed.length}`);
   lines.push("");
-  lines.push("开关  名称 / npm 包 / 兼容 / npm / 作用");
+  lines.push("开关  来源  名称 / npm 包 / 兼容 / npm / 作用");
   for (const entry of CATALOG) {
     const pkg = entry.package;
     const key = pkg?.toLowerCase() ?? "";
@@ -272,12 +276,27 @@ export async function listText(state: ManagerState, checkAll: boolean): Promise<
     const compat = entry.compat === "v2" ? "V2" : entry.compat === "v1" ? "V1" : entry.compat === "none" ? "非插件" : "未知";
     const availability = pkg ? npmLabel(npm[pkg]) : "无 npm 包";
     const note = entry.note ? `（${entry.note}）` : "";
-    lines.push(`${mark} ${entry.name} / ${pkg ?? "-"} / ${compat} / ${availability} / ${entry.description}${note}`);
+    const source = entry.source === "awesome" ? "社区" : "官方";
+    lines.push(
+      `${mark} [${source}] ${entry.name} / ${pkg ?? "-"} / ${compat} / ${availability} / ${entry.description}${note}`,
+    );
   }
   lines.push("");
   lines.push("[x] 开关打开　[-] 已选中但总开关关闭　[+] 已在配置中但未由开关管理　[ ] 关闭");
   lines.push("V1 和非插件条目无法在 OpenCode V2 加载，打开开关时会被拒绝。");
+  lines.push("社区条目来自 awesome-opencode；未验证兼容性的条目安装后可能无法加载。");
   return lines.join("\n");
+}
+
+async function mapLimit<T>(items: T[], limit: number, worker: (item: T) => Promise<void>): Promise<void> {
+  let index = 0;
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (index < items.length) {
+      const item = items[index++];
+      await worker(item);
+    }
+  });
+  await Promise.all(runners);
 }
 
 export function statusText(state: ManagerState): string {

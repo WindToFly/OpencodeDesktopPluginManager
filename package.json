@@ -1,7 +1,7 @@
 {
   "name": "opencode-ecosystem-manager",
-  "version": "0.1.0",
-  "description": "Toggle OpenCode ecosystem plugins from one tool, slash command, or local dashboard, with guarded install and uninstall.",
+  "version": "0.2.0",
+  "description": "Browse and toggle official and awesome-opencode community plugins from one tool, slash command, or local dashboard, with guarded install and uninstall.",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
@@ -14,7 +14,8 @@
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "pack:dry": "npm pack --dry-run"
+    "pack:dry": "npm pack --dry-run",
+    "refresh:catalog": "node scripts/build-awesome-catalog.mjs"
   },
   "keywords": [
     "opencode",

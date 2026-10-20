@@ -37,6 +37,8 @@ interface UiItem {
   description: string;
   note?: string;
   repo?: string;
+  source: "official" | "awesome";
+  tags?: string[];
   selected: boolean;
   installed: boolean;
   configured: boolean;
@@ -57,6 +59,8 @@ export interface UiSnapshot {
   items: UiItem[];
   counts: {
     total: number;
+    official: number;
+    awesome: number;
     v2: number;
     selected: number;
     installed: number;
@@ -180,9 +184,12 @@ async function snapshot(): Promise<UiSnapshot> {
   const items = CATALOG.map((entry): UiItem => {
     const pkg = entry.package;
     const key = pkg?.toLowerCase() ?? "";
+    const source = entry.source === "awesome" ? "awesome" : "official";
     const canToggle = Boolean(pkg) && entry.compat !== "v1" && entry.compat !== "none";
     const reason = !pkg
-      ? "没有 npm 包"
+      ? source === "awesome"
+        ? "社区条目未找到 npm 包"
+        : "没有 npm 包"
       : entry.compat === "v1"
         ? "仅支持 V1，V2 无法加载"
         : entry.compat === "none"
@@ -195,6 +202,8 @@ async function snapshot(): Promise<UiSnapshot> {
       description: entry.description,
       note: entry.note,
       repo: entry.repo,
+      source,
+      tags: entry.tags,
       selected: pkg ? selected.has(key) : false,
       installed: pkg ? installed.has(key) : false,
       configured: pkg ? configuredBase.has(key) : false,
@@ -211,7 +220,9 @@ async function snapshot(): Promise<UiSnapshot> {
     items,
     counts: {
       total: items.length,
-      v2: items.filter((item) => item.compat === "v2" || item.compat === "unknown").length,
+      official: items.filter((item) => item.source === "official").length,
+      awesome: items.filter((item) => item.source === "awesome").length,
+      v2: items.filter((item) => item.canToggle).length,
       selected: items.filter((item) => item.selected).length,
       installed: items.filter((item) => item.installed).length,
       configured: items.filter((item) => item.configured).length,

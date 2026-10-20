@@ -1,12 +1,19 @@
-// OpenCode ecosystem plugin catalog.
-// Source: https://opencode.ai/docs/ecosystem#plugins (checked 2026-10-19).
+// OpenCode plugin catalog.
+//
+// Official source: https://opencode.ai/docs/ecosystem#plugins (checked 2026-10-19).
+// Community source: https://github.com/awesome-opencode/awesome-opencode
+// (generated into ./awesome-catalog.ts by scripts/build-awesome-catalog.mjs).
+//
 // `compat` is based on the published package entrypoints:
 //   v2   = default export with { id, setup } (directly or via the ./server export)
 //   v1   = legacy @opencode-ai/plugin implementation, cannot load in OpenCode V2
 //   none = not a loadable plugin (CLI tool / instructions only / not on npm)
-//   unknown = ad-hoc package supplied by the user
+//   unknown = compatibility not verified, or an ad-hoc package supplied by the user
+
+import { AWESOME_CATALOG } from "./awesome-catalog";
 
 export type Compat = "v2" | "v1" | "none" | "unknown";
+export type CatalogSource = "official" | "awesome";
 
 export interface CatalogEntry {
   /** Name shown on the ecosystem page. */
@@ -14,13 +21,17 @@ export interface CatalogEntry {
   /** npm package name, or null when the project is not published to npm. */
   package: string | null;
   compat: Compat;
-  /** One-line Chinese summary. */
+  /** One-line summary. Official entries are Chinese; community entries use the upstream tagline. */
   description: string;
   note?: string;
   repo?: string;
+  /** Where this entry came from. Defaults to official for older callers. */
+  source?: CatalogSource;
+  /** Upstream discovery tags, when available. */
+  tags?: string[];
 }
 
-export const CATALOG: CatalogEntry[] = [
+export const OFFICIAL_CATALOG: CatalogEntry[] = [
   {
     name: "opencode-daytona",
     package: "@daytona/opencode",
@@ -308,11 +319,57 @@ export const CATALOG: CatalogEntry[] = [
   },
 ];
 
+function normalizeRepo(repo?: string): string {
+  if (!repo) return "";
+  return repo
+    .trim()
+    .replace(/\.git$/i, "")
+    .replace(/\/+$/, "")
+    .toLowerCase();
+}
+
+function mergeCatalogs(): CatalogEntry[] {
+  const merged: CatalogEntry[] = [];
+  const packages = new Set<string>();
+  const repos = new Set<string>();
+  const names = new Set<string>();
+
+  for (const entry of OFFICIAL_CATALOG) {
+    merged.push({ ...entry, source: "official" });
+    if (entry.package) packages.add(entry.package.toLowerCase());
+    const repo = normalizeRepo(entry.repo);
+    if (repo) repos.add(repo);
+    names.add(entry.name.toLowerCase());
+  }
+
+  for (const entry of AWESOME_CATALOG) {
+    const pkg = entry.package?.toLowerCase();
+    const repo = normalizeRepo(entry.repo);
+    // The same npm package or a package-less copy of an official repository is
+    // already covered by the curated official entry.
+    if (pkg && packages.has(pkg)) continue;
+    if (!pkg && repo && repos.has(repo)) continue;
+    if (!pkg && names.has(entry.name.toLowerCase())) continue;
+
+    merged.push({ ...entry, source: "awesome" });
+    if (pkg) packages.add(pkg);
+    if (repo && !pkg) repos.add(repo);
+    names.add(entry.name.toLowerCase());
+  }
+
+  return merged;
+}
+
+export const CATALOG: CatalogEntry[] = mergeCatalogs();
+
 export const BY_NAME = new Map<string, CatalogEntry>();
 export const BY_PACKAGE = new Map<string, CatalogEntry>();
 
 for (const entry of CATALOG) {
-  BY_NAME.set(entry.name.toLowerCase(), entry);
+  const name = entry.name.toLowerCase();
+  // Official entries win display-name lookups; community entries stay reachable
+  // through their npm package name.
+  if (!BY_NAME.has(name)) BY_NAME.set(name, entry);
   if (entry.package) BY_PACKAGE.set(entry.package.toLowerCase(), entry);
 }
 
