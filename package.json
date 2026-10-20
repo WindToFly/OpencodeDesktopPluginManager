@@ -1,0 +1,50 @@
+{
+  "name": "opencode-ecosystem-manager",
+  "version": "0.1.0",
+  "description": "Toggle OpenCode ecosystem plugins from one tool, slash command, or local dashboard, with guarded install and uninstall.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "pack:dry": "npm pack --dry-run"
+  },
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "plugin-manager",
+    "ecosystem",
+    "plugins",
+    "dashboard"
+  ],
+  "author": "WindToFly",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/WindToFly/OpencodeDesktopPluginManager.git"
+  },
+  "bugs": {
+    "url": "https://github.com/WindToFly/OpencodeDesktopPluginManager/issues"
+  },
+  "homepage": "https://github.com/WindToFly/OpencodeDesktopPluginManager#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@opencode/plugin": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  }
+}
