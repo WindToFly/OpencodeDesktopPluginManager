@@ -6,7 +6,19 @@ import { bindUi, openBrowser, startUi } from "./ui";
 const AUTO_KEY = Symbol.for("opencode.ecosystem-manager.auto-sync");
 let timer: ReturnType<typeof setTimeout> | undefined;
 
-const ACTIONS = ["list", "status", "on", "off", "enable", "disable", "sync", "check", "ui"] as const;
+const ACTIONS = [
+  "list",
+  "status",
+  "on",
+  "off",
+  "enable",
+  "disable",
+  "sync",
+  "check",
+  "updates",
+  "upgrade",
+  "ui",
+] as const;
 type ToolAction = (typeof ACTIONS)[number];
 
 export default Plugin.define({
@@ -18,7 +30,8 @@ export default Plugin.define({
         description:
           `OpenCode 插件开关管理器。列出官方生态与 awesome-opencode 社区共 ${CATALOG.length} 个插件及作用、` +
           "V1/V2 兼容性与 npm 可用性；打开开关会自动安装到全局配置，关闭开关会自动卸载。" +
-          "只管理开关选中的插件，不会一次性安装全部。action=ui 可打开浏览器可视化面板。",
+          "只管理开关选中的插件，不会一次性安装全部。action=updates 检查已安装插件升级（含管理器自身），" +
+          "action=upgrade 执行升级；action=ui 可打开浏览器可视化面板。",
         input: {
           type: "object",
           properties: {
@@ -28,7 +41,7 @@ export default Plugin.define({
               description:
                 "list=列出清单；status=查看开关；on=打开指定插件开关并安装；off=关闭指定插件开关并卸载；" +
                 "enable=打开总开关；disable=关闭总开关并卸载所有受管插件；sync=重新同步；check=刷新 npm 可用性；" +
-                "ui=打开可视化界面",
+                "updates=检查已安装插件升级（含管理器自身）；upgrade=升级全部或指定插件；ui=打开可视化界面",
             },
             plugins: {
               type: "array",
@@ -64,7 +77,7 @@ export default Plugin.define({
       editor.add({
         name: "ecosystem",
         description:
-          "查看/切换 OpenCode 官方与社区插件开关（/ecosystem list|on 名称|off 名称|enable|disable|sync|ui）",
+          "查看/切换/升级 OpenCode 官方与社区插件（/ecosystem list|on 名称|off 名称|updates|upgrade [名称...]|enable|disable|sync|ui）",
         execute: async ({ sessionID, prompt }) => {
           const raw = String(prompt?.text ?? "").trim().replace(/^\/ecosystem\b/i, "").trim();
           const tokens = raw ? raw.split(/\s+/) : [];
@@ -72,9 +85,11 @@ export default Plugin.define({
           let text: string;
           if (!(ACTIONS as readonly string[]).includes(action)) {
             text = [
-              "用法：/ecosystem [list|status|on 名称...|off 名称...|enable|disable|sync|check|ui]",
+              "用法：/ecosystem [list|status|on 名称...|off 名称...|updates|upgrade [名称...]|enable|disable|sync|check|ui]",
               "示例：/ecosystem on opencode-tavily",
               "示例：/ecosystem off opencode-tavily",
+              "示例：/ecosystem updates",
+              "示例：/ecosystem upgrade",
               "示例：/ecosystem ui",
             ].join("\n");
           } else if (action === "ui") {
@@ -89,7 +104,7 @@ export default Plugin.define({
             try {
               const result = await perform({
                 action,
-                plugins: action === "on" || action === "off" ? tokens : undefined,
+                plugins: action === "on" || action === "off" || action === "upgrade" ? tokens : undefined,
               });
               text = result.text;
             } catch (error) {

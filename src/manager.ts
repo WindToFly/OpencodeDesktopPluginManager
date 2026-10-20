@@ -2,6 +2,7 @@
 
 import { spawn } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { BY_PACKAGE, BY_NAME, CATALOG, resolveEntry, type CatalogEntry } from "./catalog";
 import { checkNpm, npmLabel } from "./npm";
@@ -13,10 +14,21 @@ import {
   saveState,
   unique,
   type ManagerState,
+  type NpmStatus,
 } from "./paths";
 
 export interface ActionInput {
-  action: "list" | "status" | "on" | "off" | "enable" | "disable" | "sync" | "check";
+  action:
+    | "list"
+    | "status"
+    | "on"
+    | "off"
+    | "enable"
+    | "disable"
+    | "sync"
+    | "check"
+    | "updates"
+    | "upgrade";
   plugins?: string[];
 }
 
@@ -45,6 +57,10 @@ export async function perform(input: ActionInput): Promise<ActionResult> {
         return { ok: true, text: await listText(state, false), changed: false };
       case "check":
         return { ok: true, text: await listText(state, true), changed: false };
+      case "updates":
+        return { ok: true, text: updatesText(await checkUpdates(state, true)), changed: false };
+      case "upgrade":
+        return upgrade(state, input.plugins ?? []);
       case "status":
         return { ok: true, text: statusText(state), changed: false };
       case "enable":
@@ -305,6 +321,351 @@ export function statusText(state: ManagerState): string {
   lines.push(`已选插件（${state.selected.length}）：${state.selected.length ? state.selected.join(", ") : "无"}`);
   lines.push(`受管安装（${state.installed.length}）：${state.installed.length ? state.installed.join(", ") : "无"}`);
   return lines.join("\n");
+}
+
+export type UpdateStatus = "outdated" | "current" | "unknown" | "error" | "local";
+
+export interface UpdateItem {
+  name: string;
+  package: string;
+  spec: string;
+  current: string;
+  latest: string | null;
+  status: UpdateStatus;
+  self: boolean;
+  message?: string;
+}
+
+export interface UpdateReport {
+  checkedAt: number;
+  items: UpdateItem[];
+  summary: {
+    checked: number;
+    outdated: number;
+    current: number;
+    skipped: number;
+  };
+}
+
+const SELF_PACKAGE = "opencode-ecosystem-manager";
+
+/**
+ * Check every package plugin in the global config for updates. The manager
+ * itself is included: when it was installed from npm it is just another
+ * configured package, and when it runs from a local directory it is reported
+ * as a local build instead of being silently ignored.
+ */
+export async function checkUpdates(input?: ManagerState, force = false): Promise<UpdateReport> {
+  const state = input ?? (await loadState());
+  const configured = await readConfiguredPlugins();
+  const installed = await cliPluginVersions();
+  const own = await ownVersion();
+  const items: UpdateItem[] = [];
+  const seen = new Set<string>();
+  let selfSeen = false;
+
+  for (const spec of configured) {
+    const pkg = npmPackageOf(spec);
+    if (!pkg) continue;
+    const key = pkg.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const self = key === SELF_PACKAGE;
+    if (self) selfSeen = true;
+    const entry = BY_PACKAGE.get(key);
+    const current =
+      installed.versions.get(spec.trim().toLowerCase()) ??
+      installed.versions.get(key) ??
+      (self ? own : "unknown");
+    const npm = await checkNpm(pkg, state.npm?.[pkg], force);
+    state.npm = { ...(state.npm ?? {}), [pkg]: npm };
+    items.push(
+      buildUpdateItem({
+        name: self ? "Ecosystem Manager（管理器自身）" : (entry?.name ?? pkg),
+        package: pkg,
+        spec,
+        current,
+        npm,
+        self,
+        cliError: installed.error,
+      }),
+    );
+  }
+
+  if (!selfSeen) {
+    const npm = await checkNpm(SELF_PACKAGE, state.npm?.[SELF_PACKAGE], force);
+    state.npm = { ...(state.npm ?? {}), [SELF_PACKAGE]: npm };
+    items.unshift({
+      name: "Ecosystem Manager（管理器自身）",
+      package: SELF_PACKAGE,
+      spec: "",
+      current: own,
+      latest: npm.version ?? null,
+      status: "local",
+      self: true,
+      message:
+        own === "dev" || own === "unknown"
+          ? "本地开发版 / 未通过全局 npm 安装，无法自动升级"
+          : "未在全局配置中，无法自动升级",
+    });
+  }
+
+  await saveState(state);
+  const outdated = items.filter((item) => item.status === "outdated").length;
+  return {
+    checkedAt: Date.now(),
+    items,
+    summary: {
+      checked: items.length,
+      outdated,
+      current: items.filter((item) => item.status === "current").length,
+      skipped: items.filter((item) => item.status === "local" || item.status === "unknown" || item.status === "error")
+        .length,
+    },
+  };
+}
+
+interface BuildUpdateItemInput {
+  name: string;
+  package: string;
+  spec: string;
+  current: string;
+  npm: NpmStatus;
+  self: boolean;
+  cliError?: string;
+}
+
+function buildUpdateItem(input: BuildUpdateItemInput): UpdateItem {
+  const base = {
+    name: input.name,
+    package: input.package,
+    spec: input.spec,
+    current: input.current,
+    latest: input.npm.version ?? null,
+    self: input.self,
+  };
+  if (input.npm.status !== "ok") {
+    return {
+      ...base,
+      status: "error",
+      message: `${npmLabel(input.npm)}${input.npm.message ? `：${input.npm.message}` : ""}`,
+    };
+  }
+  if (!input.npm.version) return { ...base, status: "unknown", message: "npm 未返回版本" };
+  if (input.current === "dev") {
+    return { ...base, status: "local", message: "本地开发版，跳过自身升级" };
+  }
+  if (input.current === "unknown") {
+    return {
+      ...base,
+      status: "unknown",
+      message: input.cliError ? `无法读取已安装版本：${input.cliError}` : "无法读取已安装版本",
+    };
+  }
+  const comparison = compareVersions(input.npm.version, input.current);
+  if (comparison === null) {
+    return { ...base, status: "unknown", message: `无法比较版本 ${input.current} → ${input.npm.version}` };
+  }
+  return { ...base, status: comparison > 0 ? "outdated" : "current" };
+}
+
+export function updatesText(report: UpdateReport): string {
+  const lines = [
+    `OpenCode 插件升级检查（检查 ${report.summary.checked} 个，可升级 ${report.summary.outdated} 个）`,
+  ];
+  for (const item of report.items) {
+    if (item.status === "outdated") {
+      lines.push(`↑ ${item.name} / ${item.package} / ${item.current} → ${item.latest}`);
+    } else if (item.status === "current") {
+      lines.push(`✓ ${item.name} / ${item.package} / ${item.current} 已是最新`);
+    } else if (item.status === "local") {
+      lines.push(`· ${item.name} / ${item.current} / ${item.message ?? "跳过"}`);
+    } else if (item.status === "unknown") {
+      lines.push(`? ${item.name} / ${item.package} / ${item.message ?? "版本未知"}`);
+    } else {
+      lines.push(`✘ ${item.name} / ${item.package} / ${item.message ?? "检查失败"}`);
+    }
+  }
+  lines.push("");
+  lines.push("运行 /ecosystem upgrade [名称...] 升级；不带名称会升级全部可升级插件。");
+  return lines.join("\n");
+}
+
+async function upgrade(state: ManagerState, names: string[]): Promise<ActionResult> {
+  const report = await checkUpdates(state, true);
+  const picked = pickUpdateTargets(report, names);
+  const notes: string[] = picked.missing.map((name) => `✘ 未找到可升级项：${name}`);
+  if (picked.targets.length === 0) {
+    if (notes.length === 0) notes.push(names.length ? "没有匹配的可升级插件。" : "所有已安装插件都是最新版本。");
+    return {
+      ok: !notes.some((line) => line.startsWith("✘")),
+      text: [...notes, "", updatesText(report)].join("\n"),
+      changed: false,
+    };
+  }
+
+  let changed = false;
+  for (const item of picked.targets) {
+    if (item.status === "local") {
+      notes.push(`· ${item.name}：${item.message ?? "本地开发版，跳过"}`);
+      continue;
+    }
+    if (item.status === "current") {
+      notes.push(`✓ ${item.name} 已是最新（${item.current}）`);
+      continue;
+    }
+    if (item.status !== "outdated") {
+      notes.push(`? ${item.name}：${item.message ?? "版本未知，跳过"}`);
+      continue;
+    }
+    if (!item.spec) {
+      notes.push(`✘ ${item.name}：没有可更新的配置项`);
+      continue;
+    }
+    const result = await runCli(["plugin", "update", item.spec]);
+    if (result.code === 0) {
+      changed = true;
+      notes.push(`↑ 已升级 ${item.name}：${item.current} → ${item.latest ?? "latest"}`);
+      if (item.self) notes.push("  管理器自身已更新，重启 OpenCode 后生效。");
+    } else {
+      notes.push(`✘ 升级 ${item.name} 失败：${cliError(result)}`);
+    }
+  }
+
+  const refreshed = await checkUpdates(state, true);
+  return {
+    ok: !notes.some((line) => line.startsWith("✘")),
+    text: [...notes, "", updatesText(refreshed)].join("\n"),
+    changed,
+  };
+}
+
+function pickUpdateTargets(
+  report: UpdateReport,
+  names: string[],
+): { targets: UpdateItem[]; missing: string[] } {
+  if (names.length === 0) {
+    return { targets: report.items.filter((item) => item.status === "outdated"), missing: [] };
+  }
+  const targets: UpdateItem[] = [];
+  const missing: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of names) {
+    const key = raw.trim().toLowerCase();
+    if (!key) continue;
+    const pkg = basePackage(key);
+    const item = report.items.find(
+      (candidate) =>
+        ((key === "self" || key === "manager") && candidate.self) ||
+        candidate.package.toLowerCase() === pkg ||
+        candidate.spec.toLowerCase() === key ||
+        candidate.name.toLowerCase() === key,
+    );
+    if (!item) {
+      missing.push(raw);
+      continue;
+    }
+    const itemKey = item.package.toLowerCase();
+    if (seen.has(itemKey)) continue;
+    seen.add(itemKey);
+    targets.push(item);
+  }
+  return { targets, missing };
+}
+
+interface CliPluginVersions {
+  versions: Map<string, string>;
+  error?: string;
+}
+
+async function cliPluginVersions(): Promise<CliPluginVersions> {
+  const result = await runCli(["plugin", "list"]);
+  const versions = new Map<string, string>();
+  if (result.code !== 0) return { versions, error: cliError(result) };
+  const output = result.stdout.replace(/\x1b\[[0-9;]*m/g, "");
+  for (const raw of output.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || /^ID\s+VERSION\s+SOURCE$/i.test(line)) continue;
+    let version = "";
+    let source = "";
+    const columns = line.split(/\s{2,}/);
+    if (columns.length >= 3) {
+      version = columns[1];
+      source = columns.slice(2).join("  ").trim();
+    } else {
+      const match = /^(\S+)\s+(\S+)\s+(.+)$/.exec(line);
+      if (!match) continue;
+      version = match[2];
+      source = match[3].trim();
+    }
+    if (!source || !version || version === "VERSION") continue;
+    versions.set(source.toLowerCase(), version);
+    const base = basePackage(source).toLowerCase();
+    if (base) versions.set(base, version);
+  }
+  return { versions };
+}
+
+function npmPackageOf(spec: string): string | null {
+  const trimmed = spec.trim();
+  if (!trimmed) return null;
+  if (/^(file:|link:|workspace:|git\+|git@|ssh:|https?:|github:|npm:)/i.test(trimmed)) return null;
+  if (/^[a-zA-Z]:[\\/]/.test(trimmed) || /^\.{0,2}[\\/]/.test(trimmed)) return null;
+  const pkg = basePackage(trimmed);
+  if (!/^(@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/i.test(pkg)) return null;
+  return pkg;
+}
+
+async function ownVersion(): Promise<string> {
+  try {
+    const text = await readFile(new URL("../package.json", import.meta.url), "utf8");
+    const parsed = JSON.parse(text) as { name?: unknown; version?: unknown };
+    if (parsed.name === SELF_PACKAGE && typeof parsed.version === "string") return parsed.version;
+  } catch {
+    // Local directory plugins do not ship a package.json.
+  }
+  return "dev";
+}
+
+function compareVersions(left: string, right: string): number | null {
+  const a = parseVersion(left);
+  const b = parseVersion(right);
+  if (!a || !b) return null;
+  for (let index = 0; index < 3; index++) {
+    if (a.parts[index] !== b.parts[index]) return a.parts[index] > b.parts[index] ? 1 : -1;
+  }
+  if (a.pre.length === 0 && b.pre.length === 0) return 0;
+  if (a.pre.length === 0) return 1;
+  if (b.pre.length === 0) return -1;
+  const length = Math.max(a.pre.length, b.pre.length);
+  for (let index = 0; index < length; index++) {
+    const x = a.pre[index];
+    const y = b.pre[index];
+    if (x === undefined) return -1;
+    if (y === undefined) return 1;
+    const xNumeric = /^\d+$/.test(x);
+    const yNumeric = /^\d+$/.test(y);
+    if (xNumeric && yNumeric) {
+      const difference = Number(x) - Number(y);
+      if (difference !== 0) return difference > 0 ? 1 : -1;
+    } else if (xNumeric) {
+      return -1;
+    } else if (yNumeric) {
+      return 1;
+    } else if (x !== y) {
+      return x > y ? 1 : -1;
+    }
+  }
+  return 0;
+}
+
+function parseVersion(value: string): { parts: [number, number, number]; pre: string[] } | null {
+  const match = /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/.exec(value.trim());
+  if (!match) return null;
+  return {
+    parts: [Number(match[1]), Number(match[2]), Number(match[3])],
+    pre: match[4] ? match[4].split(".") : [],
+  };
 }
 
 interface CliResult {

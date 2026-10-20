@@ -4,8 +4,8 @@ import type { NpmStatus } from "./paths";
 
 const TTL = 30 * 60 * 1000;
 
-export async function checkNpm(pkg: string, cached?: NpmStatus): Promise<NpmStatus> {
-  if (cached && Date.now() - cached.checked < TTL) return cached;
+export async function checkNpm(pkg: string, cached?: NpmStatus, force = false): Promise<NpmStatus> {
+  if (!force && cached && Date.now() - cached.checked < TTL) return cached;
   const url = registryUrl(pkg);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 8000);

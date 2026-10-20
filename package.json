@@ -1,7 +1,7 @@
 {
   "name": "opencode-ecosystem-manager",
-  "version": "0.2.0",
-  "description": "Browse and toggle official and awesome-opencode community plugins from one tool, slash command, or local dashboard, with guarded install and uninstall.",
+  "version": "0.3.0",
+  "description": "Browse and toggle official and awesome-opencode community plugins from one tool, slash command, or local dashboard, with guarded install/uninstall and update checks that include the manager itself.",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
@@ -23,7 +23,8 @@
     "plugin-manager",
     "ecosystem",
     "plugins",
-    "dashboard"
+    "dashboard",
+    "updates"
   ],
   "author": "WindToFly",
   "license": "MIT",

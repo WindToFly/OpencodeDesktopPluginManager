@@ -26,6 +26,8 @@ keeps that bookkeeping in one place:
   added yourself are never touched.
 - **Guarded installs.** A package must resolve on npm and be loadable by
   OpenCode V2 before the switch flips.
+- **Upgrade checks.** Compare installed package plugins with npm, including the
+  manager itself, and upgrade one or all without leaving the tool or dashboard.
 - **Local dashboard.** Search, filter, and toggle from a browser UI bound to
   `127.0.0.1`.
 - **No JSONC damage.** Installs and removals go through
@@ -80,11 +82,19 @@ Ask the agent to call the `ecosystem_manager` tool, or use the slash command:
 /ecosystem enable               # enable master switch, install selections
 /ecosystem disable              # disable master switch, uninstall managed
 /ecosystem sync                 # reconcile config with saved state
+/ecosystem updates             # check installed plugins for updates
+/ecosystem upgrade             # upgrade every outdated plugin
+/ecosystem upgrade opencode-tavily  # upgrade one plugin
 ```
 
-`on` and `off` accept multiple names at once. Names may be catalog names or npm
-package names. Packages outside the catalog are also accepted and installed
-as-is.
+`on`, `off`, and `upgrade` accept multiple names at once. Names may be catalog
+names or npm package names. Packages outside the catalog are also accepted and
+installed as-is.
+
+Upgrade checks include the manager itself. When it was installed from npm it is
+just another configured package and can update itself; when it runs from a local
+directory it is reported as a local build that cannot self-update. Restart
+OpenCode after a manager self-update.
 
 ### Dashboard
 
@@ -95,6 +105,8 @@ otherwise an ephemeral port) and opens it in the default browser. It provides:
 - Source filters for official vs community plugins
 - Descriptions, V1/V2 compatibility, and live npm status
 - Per-plugin switches plus a master switch
+- Update checks with per-plugin current → latest versions, one-click upgrade,
+  and an upgrade-all action (the manager is included)
 - npm refresh and manual sync
 - A one-time access token exchanged for an `HttpOnly`, `SameSite=Strict`
   cookie; API requests also validate `Origin`
@@ -114,6 +126,8 @@ again after restarting OpenCode.
   them. V2 and unverified community packages are allowed; unverified entries
   carry a warning and may not load.
 - Community entries without an npm package are listed but cannot be switched on.
+- Upgrade checks cover package plugins in the global config; local, git, and
+  file-based plugins are reported but never updated automatically.
 - Turning the master switch off keeps the selection and uninstalls every
   managed package. Turning it back on reinstalls them.
 - State is synchronized about two seconds after load and again after a
@@ -122,7 +136,7 @@ again after restarting OpenCode.
 ## Files and state
 
 - `src/index.ts` — tool and `/ecosystem` command registration, auto-sync
-- `src/manager.ts` — reconciliation, CLI calls, textual output
+- `src/manager.ts` — reconciliation, update checks, CLI calls, textual output
 - `src/ui.ts` — local HTTP server, tokens, API
 - `src/ui.html` — dashboard
 - `src/catalog.ts` — official catalog plus merge/deduplication logic

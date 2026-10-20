@@ -145,7 +145,7 @@
 
     .stats {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(5, minmax(0, 1fr));
       gap: 12px;
       margin: 18px 0 14px;
     }
@@ -201,6 +201,48 @@
       background: rgba(255, 107, 107, 0.08);
       color: #ffc2c2;
     }
+
+    .updates {
+      margin: 0 0 16px;
+      padding: 13px 15px;
+      border: 1px solid rgba(124, 156, 255, 0.26);
+      border-radius: 14px;
+      background: rgba(124, 156, 255, 0.06);
+    }
+
+    .updates-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .updates-title { font-size: 14px; font-weight: 700; }
+    .updates-actions { display: flex; gap: 7px; flex-wrap: wrap; }
+    .updates-list { display: flex; flex-direction: column; gap: 7px; margin-top: 11px; }
+
+    .update-row {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      flex-wrap: wrap;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: rgba(10, 13, 18, 0.28);
+    }
+
+    .update-name { font-weight: 650; }
+    .update-pkg { color: var(--muted); font-size: 12px; }
+    .update-versions {
+      color: #f8d99a;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 12px;
+    }
+    .update-reason { color: var(--muted); font-size: 12px; }
+    .update-row .mini-btn { margin-left: auto; }
+    .update-empty { color: var(--muted); font-size: 13px; padding: 4px 2px; }
 
     .toolbar {
       display: flex;
@@ -287,6 +329,7 @@
 
     .btn:hover, .mini-btn:hover { border-color: var(--line-2); background: var(--panel-2); }
     .btn:active, .mini-btn:active { transform: translateY(1px); }
+    .btn:disabled, .mini-btn:disabled { opacity: 0.45; cursor: not-allowed; }
     .btn.primary { border-color: rgba(124, 156, 255, 0.38); background: rgba(124, 156, 255, 0.12); color: #dfe7ff; }
     .btn.primary:hover { background: rgba(124, 156, 255, 0.18); }
     .mini-btn { padding: 5px 10px; font-size: 12px; background: rgba(245, 184, 75, 0.12); border-color: rgba(245, 184, 75, 0.3); color: #f7dca6; }
@@ -439,6 +482,7 @@
     }
 
     .card-foot a:hover { color: #dfe7ff; border-bottom-color: rgba(223, 231, 255, 0.7); }
+    .foot-actions { display: inline-flex; align-items: center; gap: 9px; }
 
     .version { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
 
@@ -662,11 +706,31 @@
         <div id="statBreakdown" class="stat-sub">官方 — · 社区 —</div>
       </div>
       <div class="stat"><div class="stat-label">可安装</div><div id="statV2" class="stat-value blue">0</div></div>
+      <div class="stat">
+        <div class="stat-label">可升级</div>
+        <div id="statUpdates" class="stat-value amber">—</div>
+        <div id="statUpdatesSub" class="stat-sub">点“检查升级”</div>
+      </div>
       <div class="stat"><div class="stat-label">已打开</div><div id="statSelected" class="stat-value amber">0</div></div>
       <div class="stat"><div class="stat-label">受管安装</div><div id="statInstalled" class="stat-value green">0</div></div>
     </section>
 
     <div id="banner" class="banner hidden"></div>
+
+    <section id="updatesPanel" class="updates hidden" aria-label="插件升级">
+      <div class="updates-head">
+        <div>
+          <div class="updates-title">插件升级</div>
+          <div id="updatesSummary" class="stat-sub"></div>
+        </div>
+        <div class="updates-actions">
+          <button id="upgradeAllBtn" class="btn primary">全部升级</button>
+          <button id="recheckBtn" class="btn">重新检查</button>
+          <button id="closeUpdatesBtn" class="btn">收起</button>
+        </div>
+      </div>
+      <div id="updatesList" class="updates-list"></div>
+    </section>
 
     <section class="toolbar" aria-label="工具栏">
       <div class="search-wrap">
@@ -686,6 +750,7 @@
         <button data-filter="blocked">不可安装</button>
       </div>
       <div class="tool-actions">
+        <button id="updatesBtn" class="btn primary" title="检查已安装插件是否有新版本（含管理器自身）">检查升级</button>
         <button id="checkBtn" class="btn" title="重新查询 npm registry">刷新 npm</button>
         <button id="syncBtn" class="btn" title="按当前开关状态重新同步">同步</button>
         <button id="refreshBtn" class="btn" title="重新读取状态">刷新</button>
@@ -694,7 +759,7 @@
     </section>
 
     <div class="result-line">
-      <span>点击开关即可安装或卸载；红色/灰色条目无法在 V2 加载；社区条目来自 awesome-opencode。</span>
+      <span>点击开关即可安装或卸载；“检查升级”可发现新版本并单独升级，含管理器自身。</span>
       <span id="resultCount"></span>
     </div>
 
@@ -731,6 +796,8 @@
       filter: "all",
       query: "",
       busy: false,
+      updates: null,
+      updatesOpen: false,
     };
 
     const $ = (selector) => document.querySelector(selector);
@@ -826,6 +893,18 @@
           body: JSON.stringify({ action, plugins }),
         });
         state.data = result.snapshot;
+        if (action === "upgrade") {
+          try {
+            state.updates = await api("/api/updates");
+            state.updatesOpen = true;
+          } catch {
+            state.updates = null;
+            state.updatesOpen = false;
+          }
+        } else {
+          state.updates = null;
+          state.updatesOpen = false;
+        }
         render();
         toast(result.ok ? "success" : "error", result.text || label || "完成");
       } catch (error) {
@@ -833,6 +912,110 @@
         await load(false);
       } finally {
         setBusy(false);
+      }
+    }
+
+    async function checkForUpdates() {
+      if (state.busy) return;
+      setBusy(true, "正在检查插件升级…");
+      try {
+        state.updates = await api("/api/updates");
+        state.updatesOpen = true;
+        render();
+        const summary = state.updates.summary;
+        toast(
+          summary.outdated > 0 ? "info" : "success",
+          "检查 " + summary.checked + " 个插件，" + summary.outdated + " 个可升级。",
+        );
+      } catch (error) {
+        toast("error", "检查升级失败：" + (error && error.message ? error.message : String(error)));
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    function updateFor(pkg) {
+      if (!pkg || !state.updates) return null;
+      return (
+        state.updates.items.find(
+          (item) => item.status === "outdated" && !item.self && item.package === pkg,
+        ) || null
+      );
+    }
+
+    function createUpdateRow(item) {
+      const row = document.createElement("div");
+      row.className = "update-row";
+
+      const name = document.createElement("span");
+      name.className = "update-name";
+      name.textContent = item.name;
+      if (item.self) {
+        const badge = document.createElement("span");
+        badge.className = "badge blue";
+        badge.textContent = "自身";
+        name.append(" ", badge);
+      }
+
+      const pkg = document.createElement("span");
+      pkg.className = "update-pkg";
+      pkg.textContent = item.package || "本地插件";
+      row.append(name, pkg);
+
+      if (item.status === "outdated") {
+        const versions = document.createElement("span");
+        versions.className = "update-versions";
+        versions.textContent = item.current + " → " + item.latest;
+        row.append(versions);
+
+        const button = document.createElement("button");
+        button.className = "mini-btn";
+        button.dataset.upgrade = item.package;
+        button.textContent = "升级";
+        row.append(button);
+      } else {
+        const reason = document.createElement("span");
+        reason.className = "update-reason";
+        reason.textContent =
+          item.message ||
+          (item.status === "local" ? "本地插件，无法自动升级" : item.status);
+        row.append(reason);
+      }
+
+      return row;
+    }
+
+    function renderUpdates() {
+      const report = state.updates;
+      const stat = $("#statUpdates");
+      const sub = $("#statUpdatesSub");
+      const panel = $("#updatesPanel");
+      if (!report) {
+        stat.textContent = "—";
+        sub.textContent = "点“检查升级”";
+        panel.classList.add("hidden");
+        return;
+      }
+
+      const summary = report.summary || { checked: 0, outdated: 0, current: 0, skipped: 0 };
+      stat.textContent = summary.outdated;
+      sub.textContent = "检查 " + summary.checked + " 个 · " + summary.current + " 个最新";
+      $("#updatesSummary").textContent =
+        "检查 " + summary.checked + " 个 · 可升级 " + summary.outdated + " 个 · " +
+        new Date(report.checkedAt).toLocaleTimeString();
+      $("#upgradeAllBtn").disabled = summary.outdated === 0;
+      panel.classList.toggle("hidden", !state.updatesOpen);
+      if (!state.updatesOpen) return;
+
+      const list = $("#updatesList");
+      const visible = report.items.filter((item) => item.status !== "current");
+      if (visible.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "update-empty";
+        empty.textContent = "所有已检查插件都是最新版本。";
+        list.replaceChildren(empty);
+      } else {
+        list.replaceChildren(...visible.map(createUpdateRow));
       }
     }
 
@@ -865,6 +1048,7 @@
       const compat = compatMeta(item.compat);
       const source = sourceMeta(item.source);
       const npm = npmMeta(item.npm);
+      const update = updateFor(item.package);
       const classes = ["card"];
       if (item.selected) classes.push("selected");
       if (item.selected && !data.enabled) classes.push("pending");
@@ -903,13 +1087,17 @@
           <span class="pill ${npm.cls}" title="${escAttr(npm.title)}">${esc(npm.label)}</span>
           ${item.installed ? '<span class="pill green">已安装</span>' : ""}
           ${item.configured && !item.installed ? '<span class="pill blue">已在配置</span>' : ""}
+          ${update ? `<span class="pill amber">可升级 ${esc(update.current)} → ${esc(update.latest)}</span>` : ""}
           ${item.selected && !data.enabled ? '<span class="pill amber">待启用</span>' : ""}
           ${installPending ? '<span class="pill amber">待安装 / 失败</span>' : ""}
           ${!item.canToggle ? `<span class="pill red">${esc(item.reason)}</span>` : ""}
         </div>
         <div class="card-foot">
           <span class="version">${item.npm && item.npm.version ? "v" + esc(item.npm.version) : ""}</span>
-          ${repo ? `<a href="${escAttr(repo)}" target="_blank" rel="noreferrer noopener">仓库 ↗</a>` : ""}
+          <span class="foot-actions">
+            ${update ? `<button class="mini-btn" data-upgrade="${escAttr(item.package)}">升级</button>` : ""}
+            ${repo ? `<a href="${escAttr(repo)}" target="_blank" rel="noreferrer noopener">仓库 ↗</a>` : ""}
+          </span>
         </div>
       `;
 
@@ -922,6 +1110,12 @@
           turnOn ? "正在安装 " + item.name + "…" : "正在卸载 " + item.name + "…",
         );
       });
+      const upgrade = article.querySelector("button[data-upgrade]");
+      if (upgrade) {
+        upgrade.addEventListener("click", () =>
+          act("upgrade", [item.package], "正在升级 " + item.name + "…"),
+        );
+      }
       return article;
     }
 
@@ -969,6 +1163,7 @@
       $("#statePath").textContent = data.statePath;
 
       renderBanner(data);
+      renderUpdates();
 
       const items = data.items.filter(matches);
       const grid = $("#grid");
@@ -1019,6 +1214,20 @@
     $("#checkBtn").addEventListener("click", () =>
       act("check", undefined, "正在检查 npm 可用性，请稍候…"),
     );
+    $("#updatesBtn").addEventListener("click", checkForUpdates);
+    $("#recheckBtn").addEventListener("click", checkForUpdates);
+    $("#upgradeAllBtn").addEventListener("click", () =>
+      act("upgrade", undefined, "正在升级全部插件…"),
+    );
+    $("#closeUpdatesBtn").addEventListener("click", () => {
+      state.updatesOpen = false;
+      renderUpdates();
+    });
+    $("#updatesList").addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-upgrade]");
+      if (!button) return;
+      act("upgrade", [button.dataset.upgrade], "正在升级 " + button.dataset.upgrade + "…");
+    });
     $("#syncBtn").addEventListener("click", () =>
       act("sync", undefined, "正在按当前开关同步…"),
     );

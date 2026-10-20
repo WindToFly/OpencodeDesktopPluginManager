@@ -11,7 +11,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { CATALOG } from "./catalog";
 import { basePackage, configFile, loadState, readConfiguredPlugins, STATE_FILE } from "./paths";
-import { perform, type ActionInput, type ActionResult } from "./manager";
+import { checkUpdates, perform, serialize, type ActionInput, type ActionResult } from "./manager";
 
 const COOKIE = "opencode_ecosystem_ui";
 const HTML_FILE = fileURLToPath(new URL("./ui.html", import.meta.url));
@@ -28,6 +28,8 @@ const ALLOWED_ACTIONS = new Set<ActionInput["action"]>([
   "disable",
   "sync",
   "check",
+  "updates",
+  "upgrade",
 ]);
 
 interface UiItem {
@@ -271,6 +273,12 @@ async function handleRequest(
       if (req.method !== "GET") return methodNotAllowed(res, "GET");
       if (!authorized(req, state.token)) return json(res, 401, { error: "unauthorized" });
       return json(res, 200, await state.snapshot());
+    }
+
+    if (url.pathname === "/api/updates") {
+      if (req.method !== "GET") return methodNotAllowed(res, "GET");
+      if (!authorized(req, state.token)) return json(res, 401, { error: "unauthorized" });
+      return json(res, 200, await serialize(() => checkUpdates(undefined, true)));
     }
 
     if (url.pathname === "/api/action") {

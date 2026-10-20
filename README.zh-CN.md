@@ -16,6 +16,7 @@ OpenCode 生态页列出了几十个插件，但试用一个插件通常意味�
 - **逐插件开关。** 打开即安装，关闭即卸载。
 - **受管归属。** 只卸载由开关安装的包，不会碰你手动添加的插件。
 - **安装前检查。** 只有能在 npm 解析、且能被 OpenCode V2 加载的包才允许打开。
+- **检查升级。** 对比已安装包与 npm 最新版本，支持单个或全部升级，管理器自身也包含在内。
 - **本地面板。** 在浏览器中搜索、筛选和切换，服务只监听 `127.0.0.1`。
 - **保留 JSONC。** 通过 `opencode plugin add/remove` 修改配置，注释和其他设置不会丢失。
 
@@ -65,10 +66,17 @@ opencode plugin add opencode-ecosystem-manager
 /ecosystem enable               # 打开总开关，安装所有已选项
 /ecosystem disable              # 关闭总开关，卸载全部受管插件
 /ecosystem sync                 # 按当前状态重新同步
+/ecosystem updates              # 检查已安装插件的升级
+/ecosystem upgrade              # 升级全部可升级插件
+/ecosystem upgrade opencode-tavily  # 升级指定插件
 ```
 
-`on`/`off` 支持一次传多个名称，名称可以是清单名称或 npm 包名。也支持清单之外的 npm
-包（按原样安装）。
+`on`/`off`/`upgrade` 支持一次传多个名称，名称可以是清单名称或 npm 包名。也支持清单之外
+的 npm 包（按原样安装）。
+
+升级检查包含管理器自身。通过 npm 安装时，它只是全局配置里的一个普通包，可以自动升级；
+以本地目录方式加载时，会标记为本地开发版，无法自动升级。管理器自身升级后需要重启
+OpenCode。
 
 ### 可视化面板
 
@@ -77,6 +85,7 @@ opencode plugin add opencode-ecosystem-manager
 
 - 161 个官方与社区插件的搜索、来源筛选、作用说明、V1/V2 与 npm 状态
 - 每个插件一个开关，以及总开关
+- 检查升级、查看当前 → 最新版本，可单个或全部升级（含管理器自身）
 - npm 刷新与手动同步
 - 访问令牌通过 URL 一次性写入 `HttpOnly`、`SameSite=Strict` Cookie，接口还校验 `Origin`
 
@@ -92,13 +101,14 @@ opencode plugin add opencode-ecosystem-manager
 - `compat: "v1"` 和 `compat: "none"` 的条目拒绝打开；V2 与未验证的社区包允许，
   未验证条目会带警告，安装后可能无法加载。
 - 社区条目没有 npm 包时只展示，不能打开开关。
+- 升级检查覆盖全局配置中的 npm 包插件；本地、git、file 方式加载的插件只报告，不会自动更新。
 - 总开关关闭时保留 `selected` 选择，卸载所有受管插件；再次 `enable` 会重新安装。
 - 插件加载后约 2 秒自动同步一次；配置变化触发重新加载时也会再次同步。
 
 ## 文件与状态
 
 - `src/index.ts`：注册工具、`/ecosystem` 命令、自动同步
-- `src/manager.ts`：开关状态与全局配置的 reconcile、CLI 调用、文本输出
+- `src/manager.ts`：开关状态与全局配置的 reconcile、升级检查、CLI 调用、文本输出
 - `src/ui.ts`：本地 HTTP 面板、令牌校验、API
 - `src/ui.html`：可视化界面
 - `src/catalog.ts`：官方清单与合并/去重逻辑
