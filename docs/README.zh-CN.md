@@ -1,6 +1,8 @@
 # OpenCode 生态插件管理器
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](../LICENSE)
+
+[English](../README.md)
 
 一个统一管理 OpenCode 生态插件的控制台。浏览官方生态与 awesome-opencode 社区插件清单，
 查看 V1/V2 兼容性与 npm 状态，用开关安装或卸载，不必手动编辑 `opencode.json(c)`。

@@ -4,6 +4,8 @@
 [![CI](https://github.com/WindToFly/OpencodeDesktopPluginManager/actions/workflows/ci.yml/badge.svg)](https://github.com/WindToFly/OpencodeDesktopPluginManager/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
+[简体中文](docs/README.zh-CN.md)
+
 A single control plane for the OpenCode plugin ecosystem. Browse the official
 ecosystem plus the much larger awesome-opencode community list, check V1/V2
 compatibility and npm availability, and toggle installs without editing

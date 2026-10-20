@@ -1,6 +1,6 @@
 {
   "name": "opencode-ecosystem-manager",
-  "version": "0.3.0",
+  "version": "0.3.2",
   "description": "Browse and toggle official and awesome-opencode community plugins from one tool, slash command, or local dashboard, with guarded install/uninstall and update checks that include the manager itself.",
   "type": "module",
   "exports": {
@@ -9,7 +9,7 @@
   "files": [
     "src",
     "README.md",
-    "README.zh-CN.md",
+    "docs/README.zh-CN.md",
     "LICENSE"
   ],
   "scripts": {
