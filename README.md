@@ -1,5 +1,7 @@
 # OpenCode Ecosystem Manager
 
+[![npm version](https://img.shields.io/npm/v/opencode-ecosystem-manager.svg)](https://www.npmjs.com/package/opencode-ecosystem-manager)
+[![CI](https://github.com/WindToFly/OpencodeDesktopPluginManager/actions/workflows/ci.yml/badge.svg)](https://github.com/WindToFly/OpencodeDesktopPluginManager/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A single control plane for the OpenCode plugin ecosystem. Browse the catalogued
